@@ -27,6 +27,7 @@ def gather_candidates() -> List[Dict]:
     all_items.extend(fetch_aliexpress_candidates())
     return all_items
 
+
 def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
     enriched = []
     for c in cands:
@@ -40,11 +41,11 @@ def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
                     old = c["avg_90"]
                     if old and old > c["price_now"]:
                         c["price_old"] = old
-						c["discount_pct"] = int(round((old - c["price_now"]) / old * 100))
+                        c["discount_pct"] = int(round((old - c["price_now"]) / old * 100))
         if c.get("discount_pct", 0) < MIN_DISCOUNT:
             continue
         score = compute_brisly_score(
-            c.get("discount_pct",0),
+            c.get("discount_pct", 0),
             c.get("stars") or c.get("rating") or 4.0,
             c["price_now"],
             c.get("avg_90"),
@@ -52,12 +53,15 @@ def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
             total_in_cat=None,
             is_prime=c.get("prime", False),
             buybox_amazon=c.get("buybox_amazon", False),
-            n_reviews=c.get("reviews") or c.get("review_count",0)
+            n_reviews=c.get("reviews") or c.get("review_count", 0),
         )
         c["score"] = score
         enriched.append(c)
-    enriched.sort(key=lambda x: (x["score"], x.get("discount_pct",0)), reverse=True)
+    enriched.sort(key=lambda x: (x["score"], x.get("discount_pct", 0)), reverse=True)
     return enriched
+
+
 
 def commit_published(asin: str):
     mark_dedup(asin)
+
