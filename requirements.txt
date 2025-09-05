@@ -1,0 +1,6 @@
+﻿telethon
+python-dotenv
+tzdata
+paapi5-python-sdk
+keepa
+upstash-redis
