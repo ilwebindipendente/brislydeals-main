@@ -1,0 +1,6 @@
+telethon
+python-dotenv
+tzdata
+python-amazon-paapi
+keepa
+upstash-redis
