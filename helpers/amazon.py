@@ -1,68 +1,71 @@
-﻿from typing import List, Dict
-from config import (AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_PARTNER_TAG,
-                    AMAZON_HOST, AMAZON_REGION, MIN_STARS, MIN_DISCOUNT, MAX_ITEMS_PER_KEYWORD)
-from paapi5_python_sdk.api.default_api import DefaultApi
-from paapi5_python_sdk.configuration import Configuration
-from paapi5_python_sdk.search_items_request import SearchItemsRequest
-from paapi5_python_sdk.search_items_resource import SearchItemsResource
+from typing import List, Dict
+from config import (
+    AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_PARTNER_TAG,
+    MIN_STARS, MIN_DISCOUNT, MAX_ITEMS_PER_KEYWORD
+)
+
+# Lib PAAPI 5 “python-amazon-paapi”
+# Docs: https://pypi.org/project/python-amazon-paapi/
+try:
+    from amazon_paapi import AmazonApi, AmazonLocale, Resources
+except ImportError:
+    # Render installerà, ma questa guard evita crash locali
+    AmazonApi = None
 
 def _client():
-    cfg = Configuration(
-        access_key=AMAZON_ACCESS_KEY,
-        secret_key=AMAZON_SECRET_KEY,
-        host=AMAZON_HOST,
-        region=AMAZON_REGION,
-    )
-    return DefaultApi(None, cfg)
+    if AmazonApi is None:
+        raise RuntimeError("amazon_paapi non installato")
+    # IT marketplace
+    return AmazonApi(AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_PARTNER_TAG, AmazonLocale.Italy)
+
+def _safe_get(fn, default=None):
+    try:
+        v = fn()
+        return v if v is not None else default
+    except Exception:
+        return default
 
 def search_candidates_for_keyword(keyword: str) -> List[Dict]:
     api = _client()
-    req = SearchItemsRequest(
-        partner_tag=AMAZON_PARTNER_TAG,
-        partner_type="Associates",
+    res = api.search_items(
         keywords=keyword,
-        marketplace="www.amazon.it",
+        item_count=MAX_ITEMS_PER_KEYWORD,
         resources=[
-            SearchItemsResource.ITEMINFO_TITLE,
-            SearchItemsResource.OFFERS_LISTINGS_PRICE,
-            SearchItemsResource.OFFERS_LISTINGS_SAVINGBASIS,
-            SearchItemsResource.CUSTOMERREVIEWS_COUNT,
-            SearchItemsResource.CUSTOMERREVIEWS_STAR_RATING,
-            SearchItemsResource.IMAGES_PRIMARY_LARGE,
-            SearchItemsResource.BROWSE_NODE_INFO_WEBSITE_SALES_RANK
+            Resources.ITEM_INFO_TITLE,
+            Resources.OFFERS_LISTINGS_PRICE,
+            Resources.OFFERS_LISTINGS_SAVING_BASIS,
+            Resources.CUSTOMER_REVIEWS_COUNT,
+            Resources.CUSTOMER_REVIEWS_STAR_RATING,
+            Resources.IMAGES_PRIMARY_LARGE,
+            Resources.BROWSE_NODE_INFO_WEBSITE_SALES_RANK,
+            Resources.DETAILS_PAGE_URL,
         ],
-        item_count=MAX_ITEMS_PER_KEYWORD
     )
-    res = api.search_items(req)
-    items = res.search_result.items if res.search_result else []
-    out = []
+
+    items = res.items or []
+    out: List[Dict] = []
+
     for it in items:
-        asin = it.asin
-        title = (it.item_info.title.display_value if it.item_info and it.item_info.title else "").strip()
-        url = it.detail_page_url
-        img = it.images.primary.large.url if it.images and it.images.primary and it.images.primary.large else None
-        price_now = None; price_old = None
+        asin  = _safe_get(lambda: it.asin)
+        title = _safe_get(lambda: it.item_info.title.display_value, "").strip()
+        url   = _safe_get(lambda: it.detail_page_url)
+        img   = _safe_get(lambda: it.images.primary.large.url)
 
-        if it.offers and it.offers.listings:
-            lst = it.offers.listings[0]
-            if lst.price and lst.price.amount:
-                price_now = float(lst.price.amount)
-            if lst.saving_basis and lst.saving_basis.amount:
-                price_old = float(lst.saving_basis.amount)
+        price_now = _safe_get(lambda: it.offers.listings[0].price.amount)
+        price_old = _safe_get(lambda: it.offers.listings[0].saving_basis.amount)
 
-        stars = it.customer_reviews.star_rating if it.customer_reviews else None
-        reviews = it.customer_reviews.count if it.customer_reviews else 0
+        stars   = _safe_get(lambda: it.customer_reviews.star_rating)
+        reviews = _safe_get(lambda: it.customer_reviews.count, 0)
 
-        rank = None; category = None
-        if it.browse_node_info and it.browse_node_info.website_sales_rank and it.browse_node_info.website_sales_rank.sales_rank:
-            sr = it.browse_node_info.website_sales_rank.sales_rank
-            rank = sr.rank
-            category = sr.product_category_id
+        rank = _safe_get(lambda: it.browse_node_info.website_sales_rank.sales_rank.rank)
+        category = _safe_get(lambda: it.browse_node_info.website_sales_rank.sales_rank.product_category_id)
 
         if not asin or not url or not price_now:
             continue
-        if stars is not None and stars < MIN_STARS:
+
+        if stars is not None and float(stars) < MIN_STARS:
             continue
+
         discount_pct = 0
         if price_old and price_old > 0:
             discount_pct = int(round((price_old - price_now) / price_old * 100))
@@ -71,11 +74,19 @@ def search_candidates_for_keyword(keyword: str) -> List[Dict]:
 
         out.append({
             "source": "amazon",
-            "asin": asin, "title": title, "url": url, "image": img,
-            "price_now": price_now, "price_old": price_old,
-            "discount_pct": discount_pct,
+            "asin": asin,
+            "title": title,
+            "url": url,
+            "image": img,
+            "price_now": float(price_now),
+            "price_old": float(price_old) if price_old else None,
+            "discount_pct": int(discount_pct),
             "stars": float(stars) if stars is not None else None,
             "reviews": int(reviews or 0),
-            "category": category, "rank": rank,
+            "category": category,
+            "rank": int(rank) if rank else None,
         })
+
     return out
+
+
