@@ -30,22 +30,10 @@ def _safe(getter, default=None):
 def search_candidates_for_keyword(keyword: str) -> List[Dict]:
     api = _client()
 
-    # Alcune versioni del pacchetto accettano direttamente i nomi stringa delle risorse
-    resources = [
-        "ItemInfo.Title",
-        "Offers.Listings.Price",
-        "Offers.Listings.SavingBasis",
-        "CustomerReviews.Count",
-        "CustomerReviews.StarRating",
-        "Images.Primary.Large",
-        "BrowseNodeInfo.WebsiteSalesRank",
-        "DetailPageURL",
-    ]
-
+    # Non passiamo 'resources' per evitare il conflitto nella versione attuale
     res = api.search_items(
         keywords=keyword,
         item_count=MAX_ITEMS_PER_KEYWORD,
-        resources=resources,
     )
 
     items = getattr(res, "items", []) or []
