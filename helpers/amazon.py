@@ -4,18 +4,12 @@ from config import (
     MIN_STARS, MIN_DISCOUNT, MAX_ITEMS_PER_KEYWORD
 )
 
-# Lib PAAPI 5 “python-amazon-paapi”
-# Docs: https://pypi.org/project/python-amazon-paapi/
-try:
-    from amazon_paapi import AmazonApi, AmazonLocale, Resources
-except ImportError:
-    # Render installerà, ma questa guard evita crash locali
-    AmazonApi = None
 
 def _client():
-    if AmazonApi is None:
-        raise RuntimeError("amazon_paapi non installato")
-    # IT marketplace
+    try:
+        from amazon_paapi import AmazonApi, AmazonLocale  # import lazy
+    except Exception as e:
+        raise RuntimeError(f"amazon_paapi import failed: {e}")
     return AmazonApi(AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_PARTNER_TAG, AmazonLocale.Italy)
 
 def _safe_get(fn, default=None):
@@ -26,21 +20,21 @@ def _safe_get(fn, default=None):
         return default
 
 def search_candidates_for_keyword(keyword: str) -> List[Dict]:
-    api = _client()
-    res = api.search_items(
-        keywords=keyword,
-        item_count=MAX_ITEMS_PER_KEYWORD,
-        resources=[
-            Resources.ITEM_INFO_TITLE,
-            Resources.OFFERS_LISTINGS_PRICE,
-            Resources.OFFERS_LISTINGS_SAVING_BASIS,
-            Resources.CUSTOMER_REVIEWS_COUNT,
-            Resources.CUSTOMER_REVIEWS_STAR_RATING,
-            Resources.IMAGES_PRIMARY_LARGE,
-            Resources.BROWSE_NODE_INFO_WEBSITE_SALES_RANK,
-            Resources.DETAILS_PAGE_URL,
-        ],
-    )
+from amazon_paapi import Resources
+res = api.search_items(
+    keywords=keyword,
+    item_count=MAX_ITEMS_PER_KEYWORD,
+    resources=[
+        Resources.ITEM_INFO_TITLE,
+        Resources.OFFERS_LISTINGS_PRICE,
+        Resources.OFFERS_LISTINGS_SAVING_BASIS,
+        Resources.CUSTOMER_REVIEWS_COUNT,
+        Resources.CUSTOMER_REVIEWS_STAR_RATING,
+        Resources.IMAGES_PRIMARY_LARGE,
+        Resources.BROWSE_NODE_INFO_WEBSITE_SALES_RANK,
+        Resources.DETAILS_PAGE_URL,
+    ],
+)
 
     items = res.items or []
     out: List[Dict] = []
@@ -88,5 +82,6 @@ def search_candidates_for_keyword(keyword: str) -> List[Dict]:
         })
 
     return out
+
 
 
