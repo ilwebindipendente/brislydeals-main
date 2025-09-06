@@ -34,10 +34,11 @@ def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
     for c in cands:
         if seen_recently(c["asin"]):
             continue
-        if c.get("source") == "amazon":
+        if c.get("source") == "amazon" and keepa_calls < KEEPA_MAX_ENRICH:
             k = enrich_with_keepa(c["asin"])
             if k:
                 c.update(k)
+            keepa_calls += 1
                 if not c.get("price_old") and c.get("avg_90"):
                     old = c["avg_90"]
                     if old and old > c["price_now"]:
@@ -65,5 +66,6 @@ def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
 
 def commit_published(asin: str):
     mark_dedup(asin)
+
 
 
