@@ -1,4 +1,4 @@
-﻿import os
+import os
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -49,6 +49,3 @@ AMZ_TO_MAIN = os.getenv("AMZ_TO_MAIN", "true").lower() == "true"
 AMZ_TO_ALI  = os.getenv("AMZ_TO_ALI", "false").lower() == "true"
 ALI_TO_MAIN = os.getenv("ALI_TO_MAIN", "true").lower() == "true"
 ALI_TO_ALI  = os.getenv("ALI_TO_ALI", "true").lower() == "true"
-
-
-
