@@ -15,6 +15,7 @@ AMAZON_SECRET_KEY = os.getenv("AMAZON_SECRET_KEY")
 AMAZON_PARTNER_TAG = os.getenv("AMAZON_PARTNER_TAG", "brislydeals-21")
 AMAZON_HOST = os.getenv("AMAZON_HOST", "webservices.amazon.it")
 AMAZON_REGION = os.getenv("AMAZON_REGION", "eu-west-1")
+AMZ_THROTTLE_MS = int(os.getenv("AMZ_THROTTLE_MS", "1200"))
 
 # Keepa
 KEEPA_API_KEY = os.getenv("KEEPA_API_KEY")
@@ -48,5 +49,6 @@ AMZ_TO_MAIN = os.getenv("AMZ_TO_MAIN", "true").lower() == "true"
 AMZ_TO_ALI  = os.getenv("AMZ_TO_ALI", "false").lower() == "true"
 ALI_TO_MAIN = os.getenv("ALI_TO_MAIN", "true").lower() == "true"
 ALI_TO_ALI  = os.getenv("ALI_TO_ALI", "true").lower() == "true"
+
 
 
