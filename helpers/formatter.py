@@ -26,20 +26,55 @@
     rank = p.get('rank') or p.get('sales_rank')
     cat_line = f"🏷️ Categoria: <b>#{rank} in {cat_name}</b>" if (rank and cat_name) else ""
 
-    # Prime/BuyBox (Amazon)
+    # Prime/BuyBox (Amazon) — mostra solo se davvero disponibili
     ship_line = ""
     if src == "amazon":
-        ship_line = f"🚚 <b>Prime</b> • 🏆 Buy Box: {'Amazon' if p.get('buybox_amazon') else 'Marketplace'}"
+        bits = []
+        if p.get("prime"):
+            bits.append("🚚 <b>Prime</b>")
+        if p.get("buybox_amazon") is not None:
+            bits.append(f"🏆 Buy Box: {'Amazon' if p.get('buybox_amazon') else 'Marketplace'}")
+        ship_line = " • ".join(bits)
 
     # Keepa (Amazon)
     keepa_bits = []
     if src == "amazon":
-        if p.get("min_price"): keepa_bits.append(f"📉 Min: {p['min_price']:.0f}€")
-        if p.get("max_price"): keepa_bits.append(f"📈 Max: {p['max_price']:.0f}€")
-        if p.get("avg_90"):    keepa_bits.append(f"📊 Media 90g: {p['avg_90']:.0f}€")
+        if p.get("min_price") is not None:
+            keepa_bits.append(f"📉 Min: {p['min_price']:.0f}€")
+        if p.get("max_price") is not None:
+            keepa_bits.append(f"📈 Max: {p['max_price']:.0f}€")
+        if p.get("avg_90") is not None:
+            keepa_bits.append(f"📊 Media 90g: {p['avg_90']:.0f}€")
     keepa_line = ""
     if keepa_bits:
         keepa_line = "📈 Storico prezzi (Keepa):\n" + " — ".join(keepa_bits)
+
+    # Brand (se presente)
+    brand_line = f"🏷️ Brand: <b>{p['brand']}</b>" if p.get("brand") else ""
+
+    # Bullet "descrizione breve" (prime 3 features)
+    feat_line = ""
+    if src == "amazon":
+        feats = p.get("features") or []
+        if feats:
+            feats = [f"• {f}" for f in feats[:3]]
+            feat_line = "\n".join(feats)
+
+    # Assemblaggio messaggio (aggiungi prima della CTA)
+    parts = [header_line, "", price_line, risp_line, stars_line, cat_line]
+    if ship_line:
+        parts.append(ship_line)
+    if keepa_line:
+        parts.extend(["", keepa_line])
+    if ali_line:
+        parts.extend(["", ali_line])
+    if brand_line:
+        parts.extend(["", brand_line])
+    if feat_line:
+        parts.extend(["", feat_line])
+    parts.extend(["", f'<a href="{link}">{cta}</a>', "", tags])
+
+    return "\n".join([s for s in parts if s]).strip()
 
     # AliExpress specific (opzionali)
     ali_bits = []
@@ -69,3 +104,4 @@
     parts.extend(["", f'<a href="{link}">{cta}</a>', "", tags])
 
     return "\n".join([s for s in parts if s]).strip()
+
