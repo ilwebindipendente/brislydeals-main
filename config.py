@@ -20,6 +20,7 @@ AMAZON_REGION = os.getenv("AMAZON_REGION", "eu-west-1")
 KEEPA_API_KEY = os.getenv("KEEPA_API_KEY")
 USE_KEEPA = os.getenv("USE_KEEPA", "true").lower() == "true"
 KEEPA_TTL_HOURS = int(os.getenv("KEEPA_TTL_HOURS", "12"))
+KEEPA_DOMAIN = os.getenv("KEEPA_DOMAIN", "IT")
 
 # Upstash
 UPSTASH_REDIS_URL = os.getenv("UPSTASH_REDIS_URL")
@@ -46,3 +47,4 @@ AMZ_TO_MAIN = os.getenv("AMZ_TO_MAIN", "true").lower() == "true"
 AMZ_TO_ALI  = os.getenv("AMZ_TO_ALI", "false").lower() == "true"
 ALI_TO_MAIN = os.getenv("ALI_TO_MAIN", "true").lower() == "true"
 ALI_TO_ALI  = os.getenv("ALI_TO_ALI", "true").lower() == "true"
+
