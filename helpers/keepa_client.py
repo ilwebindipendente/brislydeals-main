@@ -25,7 +25,7 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
 
     k = get_client()
     try:
-        p = k.query(asin, stats=90, history=False, rating=True, offers=0)
+        p = k.query(asin, domain=KEEPA_DOMAIN, stats=90, history=False, rating=True, offers=0)
     except Exception:
         return None
     if not p or not isinstance(p, list):
@@ -76,3 +76,4 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
     }
     cache_set(ck, data, ttl_seconds=KEEPA_TTL_HOURS*3600)
     return data
+
