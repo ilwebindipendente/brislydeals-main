@@ -5,6 +5,8 @@ from .keepa_client import enrich_with_keepa
 from .redis_store import seen_recently, mark_dedup
 from .scoring import compute_brisly_score
 from config import KEYWORDS, MIN_DISCOUNT, KEEPA_MAX_ENRICH
+import time
+from config import KEYWORDS, MIN_DISCOUNT, KEEPA_MAX_ENRICH, AMZ_THROTTLE_MS
 
 DEFAULT_TAGS = {
     "tv": "Hisense SmartTV OLED 144Hz",
@@ -24,6 +26,8 @@ def gather_candidates() -> List[Dict]:
         for it in items:
             it["tags"] = _keyword_tags(kw)
         all_items.extend(items)
+        time.sleep(AMZ_THROTTLE_MS / 1000.0)  # pausa anti-TooManyRequests
+
     # AliExpress (se attivo e quando integrato)
     all_items.extend(fetch_aliexpress_candidates())
     return all_items
@@ -73,3 +77,4 @@ def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
 
 def commit_published(asin: str):
     mark_dedup(asin)
+
