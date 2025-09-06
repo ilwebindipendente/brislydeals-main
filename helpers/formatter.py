@@ -6,7 +6,7 @@ def format_caption(p, amazon_tag):
     header_line = f"<b>{header} {title}</b>"
 
     # Prezzi
-    price_now = p.get('price_now') or 0.0
+    price_now = float(p.get('price_now') or 0.0)
     price_old = p.get('price_old')
     price_old_txt = f"{price_old:.2f}€" if price_old else None
     price_line = f"💰 Prezzo: <b>{price_now:.2f}€</b>" + (f" <s>{price_old_txt}</s>" if price_old_txt else "")
@@ -21,12 +21,12 @@ def format_caption(p, amazon_tag):
     reviews = p.get('reviews') or p.get('review_count', 0)
     stars_line = f"⭐ Valutazione: {stars:.1f} ★ ({reviews:,}+)" if stars else ""
 
-    # Categoria / Rank (Amazon/Keepa)
+    # Categoria / Rank
     cat_name = p.get('category_name') or p.get('category')
     rank = p.get('rank') or p.get('sales_rank')
     cat_line = f"🏷️ Categoria: <b>#{rank} in {cat_name}</b>" if (rank and cat_name) else ""
 
-    # Prime/BuyBox (Amazon) — mostra solo se davvero disponibili
+    # Prime/BuyBox (mostra solo se noti)
     ship_line = ""
     if src == "amazon":
         bits = []
@@ -36,7 +36,7 @@ def format_caption(p, amazon_tag):
             bits.append(f"🏆 Buy Box: {'Amazon' if p.get('buybox_amazon') else 'Marketplace'}")
         ship_line = " • ".join(bits)
 
-    # Keepa (Amazon)
+    # Keepa (storico prezzi)
     keepa_bits = []
     if src == "amazon":
         if p.get("min_price") is not None:
@@ -47,10 +47,8 @@ def format_caption(p, amazon_tag):
             keepa_bits.append(f"📊 Media 90g: {p['avg_90']:.0f}€")
     keepa_line = "📈 Storico prezzi (Keepa):\n" + " — ".join(keepa_bits) if keepa_bits else ""
 
-    # Brand (se presente)
+    # Brand + bullet features
     brand_line = f"🏷️ Brand: <b>{p['brand']}</b>" if p.get("brand") else ""
-
-    # Bullet "descrizione breve" (prime 3 features)
     feat_line = ""
     if src == "amazon":
         feats = p.get("features") or []
@@ -58,7 +56,7 @@ def format_caption(p, amazon_tag):
             feats = [f"• {f}" for f in feats[:3]]
             feat_line = "\n".join(feats)
 
-    # AliExpress (se presente) — riga compatta
+    # AliExpress (riga compatta)
     ali_line = ""
     if src == "aliexpress":
         ali_bits = []
@@ -76,15 +74,12 @@ def format_caption(p, amazon_tag):
             ali_bits.append("🧿 AliExpress Choice")
         ali_line = " • ".join(ali_bits)
 
-    # Link + CTA
+    # Link + CTA (inizializzati SEMPRE)
     link = p.get('url') or ""
-    if src == "amazon" and link:
-        if "tag=" not in link:
-            sep = '&' if '?' in link else '?'
-            link = f"{link}{sep}tag={amazon_tag}"
-        cta = '🔗 Apri su Amazon (App)'
-    else:
-        cta = '🔗 ➡️ Guarda su AliExpress, conviene!'
+    cta = '🔗 ➡️ Guarda su AliExpress, conviene!' if src == "aliexpress" else '🔗 Apri su Amazon (App)'
+    if src == "amazon" and link and "tag=" not in link:
+        sep = '&' if '?' in link else '?'
+        link = f"{link}{sep}tag={amazon_tag}"
 
     # Hashtag
     tags = " ".join(f"#{t}" for t in (p.get("tags") or []) if t)
