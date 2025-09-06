@@ -54,6 +54,11 @@ def search_candidates_for_keyword(keyword: str) -> List[Dict]:
         rank = _safe(lambda: it.browse_node_info.website_sales_rank.sales_rank.rank)
         category = _safe(lambda: it.browse_node_info.website_sales_rank.sales_rank.product_category_id)
 
+        # NUOVO: brand & features (bullet)
+        features = _safe(lambda: it.item_info.features.display_values, [])
+        brand = _safe(lambda: it.item_info.by_line_info.brand.display_value)
+
+
         if not asin or not url or not price_now:
             continue
         if stars is not None and float(stars) < MIN_STARS:
@@ -78,6 +83,8 @@ def search_candidates_for_keyword(keyword: str) -> List[Dict]:
             "reviews": int(reviews or 0),
             "category": category,
             "rank": int(rank) if rank else None,
+            "brand": brand,
+            "features": features if features else [],
         })
 
     return out
