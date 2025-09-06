@@ -30,6 +30,7 @@ def gather_candidates() -> List[Dict]:
 
 def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
     enriched = []
+    keepa_calls = 0
     for c in cands:
         if seen_recently(c["asin"]):
             continue
@@ -64,4 +65,5 @@ def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
 
 def commit_published(asin: str):
     mark_dedup(asin)
+
 
