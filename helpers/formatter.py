@@ -60,6 +60,25 @@
             feats = [f"• {f}" for f in feats[:3]]
             feat_line = "\n".join(feats)
 
+    # AliExpress (se presente) — riga compatta
+    ali_line = ""
+    if src == "aliexpress":
+        ali_bits = []
+        if stars:
+            ali_bits.append(f"⭐ {stars:.1f} ★")
+        if reviews:
+            ali_bits.append(f"🛒 Ordini: {reviews:,}+")
+        if p.get("store_positive"):
+            ali_bits.append(f"🏪 Store: {p['store_positive']}% positivo")
+        if p.get("shipping_label"):
+            ali_bits.append(f"🚚 {p['shipping_label']}")
+        if p.get("coupon_label"):
+            ali_bits.append(f"🏷️ Coupon: {p['coupon_label']}")
+        if p.get("choice"):
+            ali_bits.append("🧿 AliExpress Choice")
+        ali_line = " • ".join(ali_bits)
+
+
     # Assemblaggio messaggio (aggiungi prima della CTA)
     parts = [header_line, "", price_line, risp_line, stars_line, cat_line]
     if ship_line:
@@ -104,4 +123,5 @@
     parts.extend(["", f'<a href="{link}">{cta}</a>', "", tags])
 
     return "\n".join([s for s in parts if s]).strip()
+
 
