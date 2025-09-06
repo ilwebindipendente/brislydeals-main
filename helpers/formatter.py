@@ -1,27 +1,27 @@
-﻿def format_caption(p, amazon_tag):
-    src = p.get('source','amazon')
-    title = p['title']
-
+def format_caption(p, amazon_tag):
+    # Fonte & titolo
+    src = p.get('source', 'amazon')
+    title = (p.get('title') or '').strip() or 'Offerta'
     header = "🟢 [AMAZON]" if src == "amazon" else "🧧 [ALIEXPRESS]"
     header_line = f"<b>{header} {title}</b>"
 
     # Prezzi
-    price_now = p.get('price_now')
+    price_now = p.get('price_now') or 0.0
     price_old = p.get('price_old')
-    price_old_txt = f"{price_old:.2f}€" if price_old else "—"
-    price_line = f"💰 Prezzo: <b>{price_now:.2f}€</b> <s>{price_old_txt}</s>"
+    price_old_txt = f"{price_old:.2f}€" if price_old else None
+    price_line = f"💰 Prezzo: <b>{price_now:.2f}€</b>" + (f" <s>{price_old_txt}</s>" if price_old_txt else "")
 
-    # Risparmio + punteggio
-    risp = int(p.get('discount_pct',0))
+    # Sconto + Punteggio
+    risp = int(p.get('discount_pct', 0))
     score = p.get('score', 0)
     risp_line = f"🎯 Sconto/Risparmio: <b>{risp}%</b> • <b>Punteggio BrislyDeals: {score}/5</b>"
 
     # Valutazioni
     stars = p.get('stars') or p.get('rating')
-    reviews = p.get('reviews') or p.get('review_count',0)
+    reviews = p.get('reviews') or p.get('review_count', 0)
     stars_line = f"⭐ Valutazione: {stars:.1f} ★ ({reviews:,}+)" if stars else ""
 
-    # Categoria / Rank (Amazon + Keepa)
+    # Categoria / Rank (Amazon/Keepa)
     cat_name = p.get('category_name') or p.get('category')
     rank = p.get('rank') or p.get('sales_rank')
     cat_line = f"🏷️ Categoria: <b>#{rank} in {cat_name}</b>" if (rank and cat_name) else ""
@@ -45,9 +45,7 @@
             keepa_bits.append(f"📈 Max: {p['max_price']:.0f}€")
         if p.get("avg_90") is not None:
             keepa_bits.append(f"📊 Media 90g: {p['avg_90']:.0f}€")
-    keepa_line = ""
-    if keepa_bits:
-        keepa_line = "📈 Storico prezzi (Keepa):\n" + " — ".join(keepa_bits)
+    keepa_line = "📈 Storico prezzi (Keepa):\n" + " — ".join(keepa_bits) if keepa_bits else ""
 
     # Brand (se presente)
     brand_line = f"🏷️ Brand: <b>{p['brand']}</b>" if p.get("brand") else ""
@@ -78,8 +76,20 @@
             ali_bits.append("🧿 AliExpress Choice")
         ali_line = " • ".join(ali_bits)
 
+    # Link + CTA
+    link = p.get('url') or ""
+    if src == "amazon" and link:
+        if "tag=" not in link:
+            sep = '&' if '?' in link else '?'
+            link = f"{link}{sep}tag={amazon_tag}"
+        cta = '🔗 Apri su Amazon (App)'
+    else:
+        cta = '🔗 ➡️ Guarda su AliExpress, conviene!'
 
-    # Assemblaggio messaggio (aggiungi prima della CTA)
+    # Hashtag
+    tags = " ".join(f"#{t}" for t in (p.get("tags") or []) if t)
+
+    # Assemblaggio finale
     parts = [header_line, "", price_line, risp_line, stars_line, cat_line]
     if ship_line:
         parts.append(ship_line)
@@ -94,34 +104,3 @@
     parts.extend(["", f'<a href="{link}">{cta}</a>', "", tags])
 
     return "\n".join([s for s in parts if s]).strip()
-
-    # AliExpress specific (opzionali)
-    ali_bits = []
-    if src == "aliexpress":
-        if stars: ali_bits.append(f"⭐ {stars:.1f} ★")
-        if reviews: ali_bits.append(f"🛒 Ordini: {reviews:,}+")
-        if p.get("store_positive"): ali_bits.append(f"🏪 Store: {p['store_positive']}% positivo")
-        if p.get("shipping_label"): ali_bits.append(f"🚚 {p['shipping_label']}")
-        if p.get("coupon_label"): ali_bits.append(f"🏷️ Coupon: {p['coupon_label']}")
-        if p.get("choice"): ali_bits.append("🧿 AliExpress Choice")
-    ali_line = " • ".join(ali_bits)
-
-    # Link + tag affiliato Amazon
-    link = p['url']
-    if src == "amazon" and "tag=" not in link:
-        sep = '&' if '?' in link else '?'
-        link = f"{link}{sep}tag={amazon_tag}"
-
-    cta = '🔗 Apri su Amazon (App)' if src == "amazon" else '🔗 ➡️ Guarda su AliExpress, conviene!'
-
-    tags = " ".join(f"#{t}" for t in p.get("tags", []) if t)
-
-    parts = [header_line, "", price_line, risp_line, stars_line, cat_line]
-    if ship_line: parts.append(ship_line)
-    if keepa_line: parts.extend(["", keepa_line])
-    if ali_line: parts.extend(["", ali_line])
-    parts.extend(["", f'<a href="{link}">{cta}</a>', "", tags])
-
-    return "\n".join([s for s in parts if s]).strip()
-
-
