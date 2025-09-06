@@ -11,6 +11,7 @@ from helpers.redis_store import metrics_add, metrics_top
 
 TZ = ZoneInfo(TIMEZONE)
 client = TelegramClient("bot", API_ID, API_HASH)
+client.parse_mode = 'html'   # <— aggiungi questa riga
 
 def decide_action(now_local: datetime):
     if now_local.weekday() == 6 and now_local.hour == 12:
@@ -98,3 +99,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
