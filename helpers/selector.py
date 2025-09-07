@@ -1,12 +1,11 @@
 from typing import List, Dict
 from .amazon import search_candidates_for_keyword
 from .aliexpress import fetch_aliexpress_candidates
-from .keepa_client import enrich_with_keepa
+from .keepa_new import enrich_with_keepa  # <-- CAMBIATO: usa il nuovo client
 from .redis_store import seen_recently, mark_dedup
 from .scoring import compute_brisly_score
-from config import KEYWORDS, MIN_DISCOUNT, KEEPA_MAX_ENRICH
-import time
 from config import KEYWORDS, MIN_DISCOUNT, KEEPA_MAX_ENRICH, AMZ_THROTTLE_MS
+import time
 
 DEFAULT_TAGS = {
     "tv": "Hisense SmartTV OLED 144Hz",
@@ -14,6 +13,9 @@ DEFAULT_TAGS = {
     "robot": "RobotAspirapolvere",
     "monitor": "MonitorGaming",
     "ssd": "SSDnvme",
+    "gaming": "Gaming",
+    "nvme": "SSDnvme", 
+    "roborock": "RobotAspirapolvere"
 }
 
 def _keyword_tags(kw: str):
@@ -35,13 +37,15 @@ def gather_candidates() -> List[Dict]:
 def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
     enriched: List[Dict] = []
     keepa_calls = 0
+    
     for c in cands:
         if seen_recently(c["asin"]):
             continue
 
         # Enrichment Keepa (solo Amazon, entro cap per token)
         if c.get("source") == "amazon" and keepa_calls < KEEPA_MAX_ENRICH:
-            k = enrich_with_keepa(c["asin"])
+            print(f"[selector] Enriching {c['asin']} with NEW Keepa client...")
+            k = enrich_with_keepa(c["asin"])  # Usa il nuovo client
             if k:
                 c.update(k)
                 # Se manca il "prezzo precedente" ma abbiamo la media 90g,
@@ -51,6 +55,9 @@ def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
                     if old and c.get("price_now") and old > c["price_now"]:
                         c["price_old"] = old
                         c["discount_pct"] = int(round((old - c["price_now"]) / old * 100))
+                print(f"[selector] Keepa enriched {c['asin']} with data: {list(k.keys())}")
+            else:
+                print(f"[selector] No Keepa data for {c['asin']}")
             keepa_calls += 1
 
         # Filtro sconto minimo
@@ -77,4 +84,3 @@ def enrich_and_rank(cands: List[Dict]) -> List[Dict]:
 
 def commit_published(asin: str):
     mark_dedup(asin)
-
