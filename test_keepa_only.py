@@ -38,42 +38,69 @@ def test_keepa_structure():
         # Debug completo della struttura
         print("\n=== STRUTTURA OGGETTO ===")
         print(f"Type: {type(item)}")
-        print(f"Dir: {[attr for attr in dir(item) if not attr.startswith('_')]}")
         
-        if hasattr(item, '__dict__'):
-            print(f"Vars: {list(vars(item).keys())}")
-            
+        if isinstance(item, dict):
+            print(f"Dict keys: {list(item.keys())}")
+            print(f"Dict content preview:")
+            for key, value in item.items():
+                value_str = str(value)[:200] if value is not None else "None"
+                print(f"  {key}: {type(value)} = {value_str}...")
+        else:
+            print(f"Dir: {[attr for attr in dir(item) if not attr.startswith('_')]}")
+            if hasattr(item, '__dict__'):
+                print(f"Vars: {list(vars(item).keys())}")
+                
         # Test attributi specifici
         attrs_to_test = ['asin', 'stats', 'csv', 'rating', 'reviewCount', 'categoryTree', 'buyBoxIsAmazon']
         
         print("\n=== ATTRIBUTI DISPONIBILI ===")
         for attr in attrs_to_test:
-            if hasattr(item, attr):
-                value = getattr(item, attr)
-                print(f"✅ {attr}: {type(value)} = {str(value)[:100]}...")
+            if isinstance(item, dict):
+                if attr in item:
+                    value = item[attr]
+                    print(f"✅ {attr}: {type(value)} = {str(value)[:100]}...")
+                else:
+                    print(f"❌ {attr}: Non disponibile nel dict")
             else:
-                print(f"❌ {attr}: Non disponibile")
+                if hasattr(item, attr):
+                    value = getattr(item, attr)
+                    print(f"✅ {attr}: {type(value)} = {str(value)[:100]}...")
+                else:
+                    print(f"❌ {attr}: Non disponibile")
         
         # Test stats se esiste
-        if hasattr(item, 'stats'):
-            stats = getattr(item, 'stats')
+        stats = item.get('stats') if isinstance(item, dict) else getattr(item, 'stats', None)
+        if stats:
             print(f"\n=== STATS OBJECT ===")
             print(f"Stats type: {type(stats)}")
-            print(f"Stats dir: {[attr for attr in dir(stats) if not attr.startswith('_')]}")
-            
-            if hasattr(stats, '__dict__'):
-                print(f"Stats vars: {list(vars(stats).keys())}")
+            if isinstance(stats, dict):
+                print(f"Stats keys: {list(stats.keys())}")
+                for key, value in stats.items():
+                    value_str = str(value)[:100] if value is not None else "None" 
+                    print(f"  {key}: {type(value)} = {value_str}...")
+            else:
+                print(f"Stats dir: {[attr for attr in dir(stats) if not attr.startswith('_')]}")
                 
         # Test dati CSV se disponibili
-        if hasattr(item, 'csv'):
-            csv_data = getattr(item, 'csv')
+        csv_data = item.get('csv') if isinstance(item, dict) else getattr(item, 'csv', None)
+        if csv_data:
             print(f"\n=== CSV DATA ===")
             print(f"CSV type: {type(csv_data)}")
             if csv_data:
                 print(f"CSV length: {len(csv_data) if hasattr(csv_data, '__len__') else 'Unknown'}")
                 if hasattr(csv_data, 'keys'):
                     print(f"CSV keys: {list(csv_data.keys())}")
+                elif isinstance(csv_data, (list, tuple)) and csv_data:
+                    print(f"CSV first elements: {csv_data[:3] if len(csv_data) > 3 else csv_data}")
         
+        # Cerchiamo tutti i possibili campi prezzi
+        price_fields = ['price', 'prices', 'current', 'amazon', 'new', 'used', 'buyBox']
+        print(f"\n=== RICERCA CAMPI PREZZO ===")
+        for field in price_fields:
+            if isinstance(item, dict) and field in item:
+                value = item[field]
+                print(f"✅ Found {field}: {type(value)} = {str(value)[:100]}...")
+                
         return True
         
     except Exception as e:
