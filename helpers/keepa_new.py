@@ -104,27 +104,51 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
             except (AttributeError, IndexError):
                 pass
 
-        # Costruisci risultato
+        # Costruisci risultato - assicurati che tutti i valori siano serializzabili
+        def make_serializable(value):
+            """Converte valori non serializzabili in formati JSON-safe"""
+            if value is None:
+                return None
+            try:
+                # Testa se è serializzabile
+                import json
+                json.dumps(value)
+                return value
+            except (TypeError, ValueError):
+                # Se non serializzabile, converti in stringa o valore base
+                if hasattr(value, 'isoformat'):  # datetime objects
+                    return value.isoformat()
+                elif isinstance(value, (int, float, str, bool)):
+                    return value
+                else:
+                    return str(value)
+
         data = {
-            "avg_90": avg_90,
-            "min_price": min_price,
-            "max_price": max_price,
+            "avg_90": make_serializable(avg_90),
+            "min_price": make_serializable(min_price),
+            "max_price": make_serializable(max_price),
             "buybox_amazon": bool(buybox_amazon) if buybox_amazon is not None else None,
             "prime": bool(prime) if prime else False,
-            "rating": rating,
-            "review_count": review_count,
-            "category_name": category_name,
+            "rating": make_serializable(rating),
+            "review_count": make_serializable(review_count),
+            "category_name": make_serializable(category_name),
             "sales_rank": int(sales_rank) if sales_rank else None,
-            "current_price_keepa": current_price,
-            "list_price_keepa": list_price
+            "current_price_keepa": make_serializable(current_price),
+            "list_price_keepa": make_serializable(list_price)
         }
         
         # Cache solo se abbiamo dati utili
         useful_data = [avg_90, min_price, max_price, current_price, sales_rank]
         if any(v is not None for v in useful_data):
-            cache_set(cache_key, data, ttl_seconds=KEEPA_TTL_HOURS * 3600)
-            print(f"[keepa_new] SUCCESS {asin}: current={current_price}€, avg90={avg_90}€, min={min_price}€, max={max_price}€, rank={sales_rank}")
-            return data
+            try:
+                cache_set(cache_key, data, ttl_seconds=KEEPA_TTL_HOURS * 3600)
+                print(f"[keepa_new] SUCCESS {asin}: current={current_price}€, avg90={avg_90}€, min={min_price}€, max={max_price}€, rank={sales_rank}")
+                return data
+            except Exception as cache_error:
+                print(f"[keepa_new] Cache error for {asin}: {cache_error}")
+                # Restituisci i dati anche se la cache fallisce
+                print(f"[keepa_new] SUCCESS (no cache) {asin}: current={current_price}€, avg90={avg_90}€, min={min_price}€, max={max_price}€, rank={sales_rank}")
+                return data
         else:
             print(f"[keepa_new] No useful data extracted for {asin}")
             return None
