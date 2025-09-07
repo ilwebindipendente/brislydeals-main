@@ -163,6 +163,15 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
             if rank_raw and rank_raw > 0:
                 sales_rank = int(rank_raw)
 
+        # Categoria dal dict principale
+        category_name = None
+        category_tree = item.get("categoryTree")
+        if category_tree and len(category_tree) > 0:
+            try:
+                category_name = category_tree[-1].get("name")
+            except (AttributeError, IndexError):
+                pass
+
         # Costruisci risultato
         data = {
             "avg_90": avg_90,
@@ -174,19 +183,19 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
             "review_count": review_count,
             "category_name": category_name,
             "sales_rank": sales_rank,
-            # Aggiungi anche il prezzo corrente per debug
+            # Dati addizionali per debug
             "current_price_keepa": current_price,
             "list_price_keepa": list_price
         }
         
-        # Cache solo se abbiamo almeno qualche dato utile
-        useful_data = [avg_90, min_price, max_price, rating, current_price]
+        # Cache solo se abbiamo dati utili
+        useful_data = [avg_90, min_price, max_price, rating, current_price, sales_rank]
         if any(v is not None for v in useful_data):
             cache_set(cache_key, data, ttl_seconds=KEEPA_TTL_HOURS * 3600)
-            print(f"[keepa] ✅ SUCCESS {asin}: current={current_price}€, avg90={avg_90}€, min={min_price}€, max={max_price}€, rating={rating}")
+            print(f"[keepa] SUCCESS {asin}: current={current_price}, avg90={avg_90}, min={min_price}, max={max_price}, rating={rating}, rank={sales_rank}")
             return data
         else:
-            print(f"[keepa] ⚠️ No useful data extracted for {asin}")
+            print(f"[keepa] No useful data extracted for {asin}")
             return None
         
     except Exception as e:
