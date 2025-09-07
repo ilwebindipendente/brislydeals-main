@@ -13,20 +13,18 @@ def get_client():
     return _client
 
 def _normalize_price(v):
-    """Normalizza i prezzi Keepa che possono essere in centesimi"""
-    if v is None:
+    """Normalizza i prezzi Keepa che sono sempre in centesimi"""
+    if v is None or v == -1 or v == -2:
         return None
     try:
-        v = float(v)
-        # Se il valore è molto alto (>10000), probabilmente è in centesimi
-        return v / 100.0 if v >= 10000 else v
+        return float(v) / 100.0
     except (ValueError, TypeError):
         return None
 
 def enrich_with_keepa(asin: str) -> Optional[Dict]:
     """
     Arricchisce un prodotto Amazon con dati Keepa.
-    Utilizza la sintassi corretta dell'API Keepa.
+    Utilizza la struttura dict corretta restituita dall'API.
     """
     if not USE_KEEPA or not KEEPA_API_KEY:
         print(f"[keepa] Disabled: USE_KEEPA={USE_KEEPA}, has_key={bool(KEEPA_API_KEY)}")
@@ -42,22 +40,18 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
     try:
         k = get_client()
         
-        # CORREZIONE PRINCIPALE: Domain code stringa per Italia
-        domain_code = "IT"  # Client Python usa stringhe, non numeri!
+        print(f"[keepa] Querying {asin} on domain IT (Italia)...")
         
-        print(f"[keepa] Querying {asin} on domain {domain_code} (Italia)...")
-        
-        # Query ottimizzata basata sulla documentazione ufficiale
-        # Costo: ~4 token (1 base + 1 rating + 2 buybox)
+        # Query ottimizzata
         products = k.query(
             asin, 
-            domain=domain_code,
-            stats=90,           # Statistiche ultimi 90 giorni (no token)
-            days=90,            # Limita storici a 90 giorni (no token) 
-            history=False,      # Esclude dati storici pesanti (no token)
-            rating=True,        # Include rating/reviews (+1 token se < 14gg)
-            buybox=True,        # Include Buy Box data (+2 token)
-            update=2,           # Refresh solo se dati > 2 ore (risparmia)
+            domain="IT",
+            stats=90,
+            days=90,
+            history=False,
+            rating=True,
+            buybox=True,
+            update=2,
             wait=True
         )
         
@@ -67,132 +61,139 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
             
         item = products[0]
         
-        # Controllo validità prodotto
-        if not item or item.get('asin') != asin:
-            print(f"[keepa] ASIN mismatch or empty item for {asin}")
+        # Controllo che sia un dict valido
+        if not isinstance(item, dict):
+            print(f"[keepa] Invalid item type: {type(item)}")
             return None
             
         print(f"[keepa] Successfully retrieved data for {asin}")
         
-        # Estrai statistiche (dalla documentazione: stats field)
+        # Estrai statistiche dal dict "stats"
         stats = item.get("stats", {})
         
-        # Prezzi dalle statistiche (ultimi 90 giorni)
-        avg_90 = stats.get("avg")
-        min_price = stats.get("min") 
-        max_price = stats.get("max")
+        # Prezzi dalle statistiche - gestione liste con indici specifici
+        # Indici Keepa: 0=Amazon, 1=New, 2=Used, 3=Sales Rank, 4=List Price, etc.
+        current_prices = stats.get("current", [])
         
-        # Le stats possono avere sottocampi per tipo di prezzo
-        # Prova prima il prezzo Amazon (indice 0), poi new, poi qualsiasi
-        if isinstance(avg_90, dict):
-            avg_90 = avg_90.get(0) or avg_90.get("amazon") or avg_90.get("new")
-        if isinstance(min_price, dict):
-            min_price = min_price.get(0) or min_price.get("amazon") or min_price.get("new")
-        if isinstance(max_price, dict):
-            max_price = max_price.get(0) or max_price.get("amazon") or max_price.get("new")
-
-        # Normalizza prezzi
-        avg_90 = _normalize_price(avg_90)
-        min_price = _normalize_price(min_price)
-        max_price = _normalize_price(max_price)
-
-        # Rating e recensioni - accesso come attributi
-        try:
-            current_rating = None
-            current_reviews = None
+        # Prezzi attuali (in centesimi)
+        amazon_price = current_prices[0] if len(current_prices) > 0 else None
+        new_price = current_prices[1] if len(current_prices) > 1 else None
+        list_price = current_prices[4] if len(current_prices) > 4 else None
+        
+        # Usa il new price come prezzo corrente, fallback su amazon price
+        current_price = new_price if new_price and new_price > 0 else amazon_price
+        current_price = _normalize_price(current_price)
+        
+        # Prezzo di listino (per calcolare sconto)
+        list_price = _normalize_price(list_price)
+        
+        # Prezzi min/max storici dalle statistiche
+        min_data = stats.get("min", [])
+        max_data = stats.get("max", [])
+        
+        # Estrai prezzi da liste [timestamp, price] - prendi il prezzo dell'indice corretto
+        min_price = None
+        max_price = None
+        
+        if isinstance(min_data, list) and len(min_data) > 1:
+            # min_data[1] = New price min, min_data[0] = Amazon price min
+            min_new = min_data[1] if len(min_data) > 1 and min_data[1] else None
+            min_amazon = min_data[0] if len(min_data) > 0 and min_data[0] else None
             
-            # Prova diversi modi per accedere ai dati
-            if hasattr(item, 'stats') and item.stats:
-                current_stats = getattr(item.stats, 'current', None)
-                if current_stats:
-                    current_rating = getattr(current_stats, 'rating', None)
-                    current_reviews = getattr(current_stats, 'reviewCount', None)
-            
-            # Fallback: cerca direttamente nell'item
-            if current_rating is None:
-                current_rating = getattr(item, 'rating', None)
-            if current_reviews is None:
-                current_reviews = getattr(item, 'reviewCount', None)
+            if isinstance(min_new, list) and len(min_new) > 1:
+                min_price = _normalize_price(min_new[1])
+            elif isinstance(min_amazon, list) and len(min_amazon) > 1:
+                min_price = _normalize_price(min_amazon[1])
                 
-        except Exception as e:
-            print(f"[keepa] Could not extract rating/reviews: {e}")
-            current_rating = None
-            current_reviews = None
+        if isinstance(max_data, list) and len(max_data) > 1:
+            max_new = max_data[1] if len(max_data) > 1 and max_data[1] else None
+            max_amazon = max_data[0] if len(max_data) > 0 and max_data[0] else None
+            
+            if isinstance(max_new, list) and len(max_new) > 1:
+                max_price = _normalize_price(max_new[1])
+            elif isinstance(max_amazon, list) and len(max_amazon) > 1:
+                max_price = _normalize_price(max_amazon[1])
+
+        # Calcola media 90 giorni (approssimazione da min/max se non disponibile altrimenti)
+        avg_90 = None
+        if min_price and max_price:
+            avg_90 = (min_price + max_price) / 2
+        elif current_price:
+            avg_90 = current_price
+
+        # Rating e recensioni - potrebbero essere in posizioni specifiche del current array
+        rating = None
+        review_count = None
+        
+        # Spesso rating è all'indice 16, review count all'indice 17 (varia per marketplace)
+        if len(current_prices) > 16:
+            rating_raw = current_prices[16]
+            if rating_raw and rating_raw > 0:
+                rating = float(rating_raw) / 10.0  # Keepa rating è in decimi
+                
+        if len(current_prices) > 17:
+            review_count_raw = current_prices[17]
+            if review_count_raw and review_count_raw > 0:
+                review_count = int(review_count_raw)
 
         # Buy Box info
-        try:
-            buybox_amazon = getattr(item, 'buyBoxIsAmazon', False)
-        except Exception:
-            buybox_amazon = False
-        
-        # Info Prime/prodotto base
-        try:
-            prime = getattr(item, 'isPrimeExclusive', False) or getattr(item, 'isPrime', False)
-        except Exception:
+        buybox_amazon = None
+        buy_box_price = stats.get("buyBoxPrice")
+        if buy_box_price and buy_box_price > 0:
+            buybox_amazon = True  # Se c'è un prezzo buy box, probabilmente è Amazon
+            
+        # Prime info (spesso nei campi buyBox)
+        prime = stats.get("buyBoxIsPrimeEligible") or stats.get("buyBoxIsPrimeExclusive")
+        if prime is None:
             prime = False
         
-        # Categoria
+        # Categoria dal dict principale
         category_name = None
-        try:
-            category_tree = getattr(item, 'categoryTree', None)
-            if category_tree and len(category_tree) > 0:
-                category_name = category_tree[-1].get('name') if hasattr(category_tree[-1], 'get') else getattr(category_tree[-1], 'name', None)
-        except Exception:
-            pass
+        category_tree = item.get("categoryTree")
+        if category_tree and len(category_tree) > 0:
+            try:
+                category_name = category_tree[-1].get("name")
+            except (AttributeError, IndexError):
+                pass
 
-        # Sales rank
+        # Sales rank - spesso all'indice 3 del current array
         sales_rank = None
-        try:
-            if hasattr(item, 'stats') and item.stats:
-                current_stats = getattr(item.stats, 'current', None)
-                if current_stats and hasattr(current_stats, 'salesRanks'):
-                    ranks = getattr(current_stats, 'salesRanks', None)
-                    if ranks:
-                        if hasattr(ranks, 'values'):  # dict-like
-                            valid_ranks = [v for v in ranks.values() if isinstance(v, int) and v > 0]
-                        elif hasattr(ranks, '__iter__'):  # list-like
-                            valid_ranks = [v for v in ranks if isinstance(v, int) and v > 0]
-                        else:
-                            valid_ranks = []
-                        
-                        if valid_ranks:
-                            sales_rank = min(valid_ranks)
-        except Exception:
-            pass
+        if len(current_prices) > 3:
+            rank_raw = current_prices[3]
+            if rank_raw and rank_raw > 0:
+                sales_rank = int(rank_raw)
 
         # Costruisci risultato
         data = {
             "avg_90": avg_90,
             "min_price": min_price,
             "max_price": max_price,
-            "buybox_amazon": bool(buybox_amazon),
+            "buybox_amazon": bool(buybox_amazon) if buybox_amazon is not None else None,
             "prime": bool(prime),
-            "rating": float(current_rating) if current_rating is not None else None,
-            "review_count": int(current_reviews) if current_reviews is not None else None,
+            "rating": rating,
+            "review_count": review_count,
             "category_name": category_name,
-            "sales_rank": sales_rank
+            "sales_rank": sales_rank,
+            # Aggiungi anche il prezzo corrente per debug
+            "current_price_keepa": current_price,
+            "list_price_keepa": list_price
         }
         
-        # Cache solo se abbiamo dati utili
-        if any(v is not None for v in [avg_90, min_price, max_price, current_rating]):
+        # Cache solo se abbiamo almeno qualche dato utile
+        useful_data = [avg_90, min_price, max_price, rating, current_price]
+        if any(v is not None for v in useful_data):
             cache_set(cache_key, data, ttl_seconds=KEEPA_TTL_HOURS * 3600)
-            print(f"[keepa] ✅ SUCCESS {asin}: avg90={avg_90}€, rating={current_rating}, buybox_amazon={buybox_amazon}")
+            print(f"[keepa] ✅ SUCCESS {asin}: current={current_price}€, avg90={avg_90}€, min={min_price}€, max={max_price}€, rating={rating}")
             return data
         else:
-            print(f"[keepa] ⚠️ No useful data for {asin}")
+            print(f"[keepa] ⚠️ No useful data extracted for {asin}")
             return None
         
     except Exception as e:
-        error_msg = str(e)
-        print(f"[keepa] ❌ Error for {asin}: {type(e).__name__}: {error_msg}")
+        print(f"[keepa] ❌ Error for {asin}: {type(e).__name__}: {e}")
         
-        # Gestione specifica errori
-        if "REQUEST_REJECTED" in error_msg:
+        if "REQUEST_REJECTED" in str(e):
             print(f"[keepa] 🔄 Rate limited, sleeping 3 seconds...")
             time.sleep(3)
-        elif "402" in error_msg or "Payment Required" in error_msg:
-            print(f"[keepa] 💳 API key issue or plan expired")
-        elif "429" in error_msg or "Too Many Requests" in error_msg:
-            print(f"[keepa] 🚫 Out of tokens")
         
         return None
