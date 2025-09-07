@@ -79,9 +79,15 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
         # Prezzi storici (media 90 giorni)
         avg_90 = avg90_data.get("NEW") or avg90_data.get("AMAZON")
         
-        # Prezzi min/max
+        # Prezzi min/max - estrarre solo il valore numerico se sono tuple
         min_price = min_data.get("NEW") or min_data.get("AMAZON")
         max_price = max_data.get("NEW") or max_data.get("AMAZON")
+        
+        # Se min/max sono tuple (timestamp, prezzo), estrai solo il prezzo
+        if isinstance(min_price, (list, tuple)) and len(min_price) > 1:
+            min_price = min_price[1]
+        if isinstance(max_price, (list, tuple)) and len(max_price) > 1:
+            max_price = max_price[1]
         
         # Sales rank
         sales_rank = current_data.get("SALES")
