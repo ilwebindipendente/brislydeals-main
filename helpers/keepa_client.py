@@ -96,37 +96,69 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
         min_price = _normalize_price(min_price)
         max_price = _normalize_price(max_price)
 
-        # Rating e recensioni dalle stats
-        current_rating = stats.get("current", {}).get("rating")
-        current_reviews = stats.get("current", {}).get("reviewCount")
-        
-        # Buy Box info (dalle stats con buybox=True)
-        buybox_stats = stats.get("buyBoxStats", {})
-        buybox_amazon = buybox_stats.get("isBuyBoxAmazon", False)
+        # Rating e recensioni - accesso come attributi
+        try:
+            current_rating = None
+            current_reviews = None
+            
+            # Prova diversi modi per accedere ai dati
+            if hasattr(item, 'stats') and item.stats:
+                current_stats = getattr(item.stats, 'current', None)
+                if current_stats:
+                    current_rating = getattr(current_stats, 'rating', None)
+                    current_reviews = getattr(current_stats, 'reviewCount', None)
+            
+            # Fallback: cerca direttamente nell'item
+            if current_rating is None:
+                current_rating = getattr(item, 'rating', None)
+            if current_reviews is None:
+                current_reviews = getattr(item, 'reviewCount', None)
+                
+        except Exception as e:
+            print(f"[keepa] Could not extract rating/reviews: {e}")
+            current_rating = None
+            current_reviews = None
+
+        # Buy Box info
+        try:
+            buybox_amazon = getattr(item, 'buyBoxIsAmazon', False)
+        except Exception:
+            buybox_amazon = False
         
         # Info Prime/prodotto base
-        prime = item.get("isPrimeExclusive", False) or item.get("isPrime", False)
+        try:
+            prime = getattr(item, 'isPrimeExclusive', False) or getattr(item, 'isPrime', False)
+        except Exception:
+            prime = False
         
         # Categoria
         category_name = None
-        if "categoryTree" in item and item["categoryTree"]:
-            try:
-                category_name = item["categoryTree"][-1]["name"]
-            except (KeyError, IndexError, TypeError):
-                pass
+        try:
+            category_tree = getattr(item, 'categoryTree', None)
+            if category_tree and len(category_tree) > 0:
+                category_name = category_tree[-1].get('name') if hasattr(category_tree[-1], 'get') else getattr(category_tree[-1], 'name', None)
+        except Exception:
+            pass
 
-        # Sales rank dalle stats
+        # Sales rank
         sales_rank = None
-        current_stats = stats.get("current", {})
-        if "salesRanks" in current_stats:
-            try:
-                ranks = current_stats["salesRanks"]
-                if isinstance(ranks, dict) and ranks:
-                    valid_ranks = [v for v in ranks.values() if isinstance(v, int) and v > 0]
-                    if valid_ranks:
-                        sales_rank = min(valid_ranks)  # Miglior rank
-            except (ValueError, TypeError):
-                pass
+        try:
+            if hasattr(item, 'stats') and item.stats:
+                current_stats = getattr(item.stats, 'current', None)
+                if current_stats and hasattr(current_stats, 'salesRanks'):
+                    ranks = getattr(current_stats, 'salesRanks', None)
+                    if ranks:
+                        if hasattr(ranks, 'values'):  # dict-like
+                            valid_ranks = [v for v in ranks.values() if isinstance(v, int) and v > 0]
+                        elif hasattr(ranks, '__iter__'):  # list-like
+                            valid_ranks = [v for v in ranks if isinstance(v, int) and v > 0]
+                        else:
+                            valid_ranks = []
+                        
+                        if valid_ranks:
+                            sales_rank = min(valid_ranks)
+        except Exception:
+            pass
 
         # Costruisci risultato
         data = {
