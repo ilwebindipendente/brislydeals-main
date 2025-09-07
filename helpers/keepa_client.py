@@ -42,16 +42,16 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
     try:
         k = get_client()
         
-        # CORREZIONE PRINCIPALE: Domain ID corretto per Italia
-        domain_id = 8  # Italia (era 5, sbagliato!)
+        # CORREZIONE PRINCIPALE: Domain code stringa per Italia
+        domain_code = "IT"  # Client Python usa stringhe, non numeri!
         
-        print(f"[keepa] Querying {asin} on domain {domain_id} (Italia)...")
+        print(f"[keepa] Querying {asin} on domain {domain_code} (Italia)...")
         
         # Query ottimizzata basata sulla documentazione ufficiale
         # Costo: ~4 token (1 base + 1 rating + 2 buybox)
         products = k.query(
             asin, 
-            domain=domain_id,
+            domain=domain_code,
             stats=90,           # Statistiche ultimi 90 giorni (no token)
             days=90,            # Limita storici a 90 giorni (no token) 
             history=False,      # Esclude dati storici pesanti (no token)
