@@ -22,7 +22,7 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
         return None
     
     # Controlla cache
-    cache_key = f"keepa_new:{asin}"
+    cache_key = f"keepa_fixed:{asin}"
     cached = cache_get(cache_key)
     if cached:
         print(f"[keepa_new] Cache hit for {asin}")
