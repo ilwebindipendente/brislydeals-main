@@ -26,7 +26,7 @@ def _normalize_price(v):
 def enrich_with_keepa(asin: str) -> Optional[Dict]:
     """
     Arricchisce un prodotto Amazon con dati Keepa.
-    Ritorna un dict con metriche oppure None se non disponibili.
+    Utilizza la sintassi corretta dell'API Keepa.
     """
     if not USE_KEEPA or not KEEPA_API_KEY:
         print(f"[keepa] Disabled: USE_KEEPA={USE_KEEPA}, has_key={bool(KEEPA_API_KEY)}")
@@ -39,26 +39,26 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
         print(f"[keepa] Cache hit for {asin}")
         return cached
 
-    # Query con gestione migliorata degli errori
     try:
         k = get_client()
         
-        # CORREZIONE 1: Usa dominio numerico invece di stringa
-        # IT = 5, US = 1, UK = 2, DE = 3, FR = 4, etc.
-        domain_id = 5  # Italia
+        # CORREZIONE PRINCIPALE: Domain ID corretto per Italia
+        domain_id = 8  # Italia (era 5, sbagliato!)
         
-        print(f"[keepa] Querying {asin} on domain {domain_id}...")
+        print(f"[keepa] Querying {asin} on domain {domain_id} (Italia)...")
         
-        # CORREZIONE 2: Parametri più conservativi
+        # Query ottimizzata basata sulla documentazione ufficiale
+        # Costo: ~4 token (1 base + 1 rating + 2 buybox)
         products = k.query(
             asin, 
-            domain=domain_id,  # Usa numero invece di "IT"
-            stats=90,
-            history=False,
-            rating=True,
-            offers=0,
-            wait=True,
-            days=90  # Limita il range di giorni
+            domain=domain_id,
+            stats=90,           # Statistiche ultimi 90 giorni (no token)
+            days=90,            # Limita storici a 90 giorni (no token) 
+            history=False,      # Esclude dati storici pesanti (no token)
+            rating=True,        # Include rating/reviews (+1 token se < 14gg)
+            buybox=True,        # Include Buy Box data (+2 token)
+            update=2,           # Refresh solo se dati > 2 ore (risparmia)
+            wait=True
         )
         
         if not products or not isinstance(products, list) or len(products) == 0:
@@ -67,55 +67,47 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
             
         item = products[0]
         
-        # CORREZIONE 3: Controllo se il prodotto esiste davvero
+        # Controllo validità prodotto
         if not item or item.get('asin') != asin:
             print(f"[keepa] ASIN mismatch or empty item for {asin}")
             return None
             
+        print(f"[keepa] Successfully retrieved data for {asin}")
+        
+        # Estrai statistiche (dalla documentazione: stats field)
         stats = item.get("stats", {})
         
-        print(f"[keepa] Raw stats for {asin}: {list(stats.keys())}")
+        # Prezzi dalle statistiche (ultimi 90 giorni)
+        avg_90 = stats.get("avg")
+        min_price = stats.get("min") 
+        max_price = stats.get("max")
         
-        # Estrai statistiche prezzi con gestione dict/int
-        avg_90 = stats.get("avg") or stats.get("avg90")
+        # Le stats possono avere sottocampi per tipo di prezzo
+        # Prova prima il prezzo Amazon (indice 0), poi new, poi qualsiasi
         if isinstance(avg_90, dict):
             avg_90 = avg_90.get(0) or avg_90.get("amazon") or avg_90.get("new")
-            
-        min_price = stats.get("min")
         if isinstance(min_price, dict):
             min_price = min_price.get(0) or min_price.get("amazon") or min_price.get("new")
-            
-        max_price = stats.get("max")
         if isinstance(max_price, dict):
             max_price = max_price.get(0) or max_price.get("amazon") or max_price.get("new")
 
-        # Normalizza i prezzi
+        # Normalizza prezzi
         avg_90 = _normalize_price(avg_90)
         min_price = _normalize_price(min_price)
         max_price = _normalize_price(max_price)
 
-        # Rating e recensioni - gestione migliorata
-        current_stats = stats.get("current", {})
-        rating = None
-        review_count = None
+        # Rating e recensioni dalle stats
+        current_rating = stats.get("current", {}).get("rating")
+        current_reviews = stats.get("current", {}).get("reviewCount")
         
-        # Prova diverse chiavi per rating
-        if "rating" in current_stats:
-            rating = current_stats["rating"]
-        elif "rating" in item:
-            rating = item["rating"]
+        # Buy Box info (dalle stats con buybox=True)
+        buybox_stats = stats.get("buyBoxStats", {})
+        buybox_amazon = buybox_stats.get("isBuyBoxAmazon", False)
         
-        # Prova diverse chiavi per review count
-        if "reviewCount" in current_stats:
-            review_count = current_stats["reviewCount"]
-        elif "reviewCount" in item:
-            review_count = item["reviewCount"]
-
-        # Informazioni prodotto
-        buybox_amazon = item.get("buyBoxIsAmazon", False)
+        # Info Prime/prodotto base
         prime = item.get("isPrimeExclusive", False) or item.get("isPrime", False)
         
-        # Categoria - gestione migliorata
+        # Categoria
         category_name = None
         if "categoryTree" in item and item["categoryTree"]:
             try:
@@ -123,18 +115,17 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
             except (KeyError, IndexError, TypeError):
                 pass
 
-        # Sales rank - gestione migliorata
+        # Sales rank dalle stats
         sales_rank = None
-        if "salesRanks" in current_stats and current_stats["salesRanks"]:
+        current_stats = stats.get("current", {})
+        if "salesRanks" in current_stats:
             try:
                 ranks = current_stats["salesRanks"]
-                if isinstance(ranks, dict):
+                if isinstance(ranks, dict) and ranks:
                     valid_ranks = [v for v in ranks.values() if isinstance(v, int) and v > 0]
                     if valid_ranks:
-                        sales_rank = min(valid_ranks)
-                elif isinstance(ranks, list) and ranks:
-                    sales_rank = ranks[0]
-            except (ValueError, TypeError, KeyError):
+                        sales_rank = min(valid_ranks)  # Miglior rank
+            except (ValueError, TypeError):
                 pass
 
         # Costruisci risultato
@@ -144,27 +135,32 @@ def enrich_with_keepa(asin: str) -> Optional[Dict]:
             "max_price": max_price,
             "buybox_amazon": bool(buybox_amazon),
             "prime": bool(prime),
-            "rating": float(rating) if rating is not None else None,
-            "review_count": int(review_count) if review_count is not None else None,
+            "rating": float(current_rating) if current_rating is not None else None,
+            "review_count": int(current_reviews) if current_reviews is not None else None,
             "category_name": category_name,
             "sales_rank": sales_rank
         }
         
-        # Salva in cache solo se abbiamo almeno qualche dato utile
-        if any(v is not None for v in [avg_90, min_price, max_price, rating]):
+        # Cache solo se abbiamo dati utili
+        if any(v is not None for v in [avg_90, min_price, max_price, current_rating]):
             cache_set(cache_key, data, ttl_seconds=KEEPA_TTL_HOURS * 3600)
-            print(f"[keepa] Success for {asin}: avg90={avg_90}, min={min_price}, max={max_price}, rating={rating}")
+            print(f"[keepa] ✅ SUCCESS {asin}: avg90={avg_90}€, rating={current_rating}, buybox_amazon={buybox_amazon}")
+            return data
         else:
-            print(f"[keepa] No useful data for {asin}, not caching")
-        
-        return data
+            print(f"[keepa] ⚠️ No useful data for {asin}")
+            return None
         
     except Exception as e:
-        print(f"[keepa] Query error for {asin}: {type(e).__name__}: {e}")
+        error_msg = str(e)
+        print(f"[keepa] ❌ Error for {asin}: {type(e).__name__}: {error_msg}")
         
-        # CORREZIONE 4: Se è REQUEST_REJECTED, aspetta un po'
-        if "REQUEST_REJECTED" in str(e):
-            print(f"[keepa] Rate limited, sleeping 2 seconds...")
-            time.sleep(2)
+        # Gestione specifica errori
+        if "REQUEST_REJECTED" in error_msg:
+            print(f"[keepa] 🔄 Rate limited, sleeping 3 seconds...")
+            time.sleep(3)
+        elif "402" in error_msg or "Payment Required" in error_msg:
+            print(f"[keepa] 💳 API key issue or plan expired")
+        elif "429" in error_msg or "Too Many Requests" in error_msg:
+            print(f"[keepa] 🚫 Out of tokens")
         
         return None
