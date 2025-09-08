@@ -9,6 +9,14 @@ from helpers.selector import gather_candidates, enrich_and_rank, commit_publishe
 from helpers.formatter import format_caption
 from helpers.redis_store import metrics_add, metrics_top
 
+from telethon import Button
+
+buttons = [
+    [Button.url("🛒 Vedi su Amazon", amazon_url)],
+    [Button.url("⚠️ Segnala errori", "https://t.me/BrislyDealsBot")],
+    [Button.url("🌐 Visita BrislyDeals", "https://brislydeals.com")]
+]
+
 TZ = ZoneInfo(TIMEZONE)
 client = TelegramClient("bot", API_ID, API_HASH)
 client.parse_mode = 'html'   # <— aggiungi questa riga
@@ -99,4 +107,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
