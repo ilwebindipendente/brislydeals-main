@@ -1,7 +1,7 @@
-﻿import os, asyncio, argparse
+import os, asyncio, argparse
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from telethon import TelegramClient
+from telethon import TelegramClient, Button
 from config import (API_ID, API_HASH, BOT_TOKEN, CHANNEL_MAIN, CHANNEL_ALI,
                     TIMEZONE, AMAZON_PARTNER_TAG, PUBLISH_HOURS, POSTS_PER_SLOT,
                     AMZ_TO_MAIN, AMZ_TO_ALI, ALI_TO_MAIN, ALI_TO_ALI)
@@ -9,17 +9,9 @@ from helpers.selector import gather_candidates, enrich_and_rank, commit_publishe
 from helpers.formatter import format_caption
 from helpers.redis_store import metrics_add, metrics_top
 
-from telethon import Button
-
-buttons = [
-    [Button.url("🛒 Vedi su Amazon", amazon_url)],
-    [Button.url("⚠️ Segnala errori", "https://t.me/BrislyDealsBot")],
-    [Button.url("🌐 Visita BrislyDeals", "https://brislydeals.com")]
-]
-
 TZ = ZoneInfo(TIMEZONE)
 client = TelegramClient("bot", API_ID, API_HASH)
-client.parse_mode = 'html'   # <— aggiungi questa riga
+client.parse_mode = 'html'
 
 def decide_action(now_local: datetime):
     if now_local.weekday() == 6 and now_local.hour == 12:
@@ -31,6 +23,24 @@ def decide_action(now_local: datetime):
 def week_key(dt: datetime) -> str:
     year, week, _ = dt.isocalendar()
     return f"{year}-W{week:02d}"
+
+def create_inline_buttons(offer_url, offer_source="amazon"):
+    """Crea i pulsanti inline per ogni post"""
+    buttons = []
+    
+    # Pulsante principale Amazon/AliExpress
+    if offer_source == "amazon":
+        buttons.append([Button.url("🛒 Vedi su Amazon", offer_url)])
+    else:
+        buttons.append([Button.url("🛒 Vedi su AliExpress", offer_url)])
+    
+    # Pulsanti di servizio (affiancati)
+    buttons.append([
+        Button.url("⚠️ Segnala errori", "https://t.me/BrislyDealsBot"),
+        Button.url("🌐 BrislyDeals", "https://brislydeals.com")
+    ])
+    
+    return buttons
 
 async def task_publish():
     cands = await asyncio.to_thread(gather_candidates)
@@ -53,12 +63,36 @@ async def task_publish():
             if ALI_TO_MAIN: targets.append(CHANNEL_MAIN)
             if ALI_TO_ALI:  targets.append(CHANNEL_ALI)
 
+        # Prepara URL con tag affiliazione
+        url = offer.get('url', '')
+        if offer.get("source") == "amazon" and url and "tag=" not in url:
+            sep = '&' if '?' in url else '?'
+            url = f"{url}{sep}tag={AMAZON_PARTNER_TAG}"
+
         for ch in targets:
+            # Formatta caption (senza link testuale)
             caption = format_caption(offer, AMAZON_PARTNER_TAG)
+            
+            # Crea pulsanti inline
+            buttons = create_inline_buttons(url, offer.get("source", "amazon"))
+            
+            # Pubblica con immagine e pulsanti
             if offer.get("image"):
-                await client.send_file(ch, offer["image"], caption=caption, parse_mode="html")
+                await client.send_file(
+                    ch, 
+                    offer["image"], 
+                    caption=caption, 
+                    parse_mode="html",
+                    buttons=buttons
+                )
             else:
-                await client.send_message(ch, caption, parse_mode="html")
+                await client.send_message(
+                    ch, 
+                    caption, 
+                    parse_mode="html",
+                    buttons=buttons
+                )
+            
             # metriche per report (per canale)
             ocopy = dict(offer); ocopy["channel"] = ch
             metrics_add(wk, ocopy, float(offer.get("score", 0)))
@@ -107,5 +141,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
