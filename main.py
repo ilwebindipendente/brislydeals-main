@@ -36,7 +36,7 @@ def create_inline_buttons(offer_url, offer_source="amazon"):
     
     # Pulsanti di servizio (affiancati)
     buttons.append([
-        Button.url("⚠️ Segnala errori", "https://t.me/BrislyDealsBot"),
+        Button.url("⚠️ Segnala errori", "mailto:hello@brislydeals.com?subject=Segnalazione Errore BrislyDeals&body=Ciao, ho trovato un errore nel post:"),
         Button.url("🌐 BrislyDeals", "https://brislydeals.com")
     ])
     
