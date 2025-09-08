@@ -6,7 +6,7 @@ from config import (API_ID, API_HASH, BOT_TOKEN, CHANNEL_MAIN, CHANNEL_ALI,
                     TIMEZONE, AMAZON_PARTNER_TAG, PUBLISH_HOURS, POSTS_PER_SLOT,
                     AMZ_TO_MAIN, AMZ_TO_ALI, ALI_TO_MAIN, ALI_TO_ALI)
 from helpers.selector import gather_candidates, enrich_and_rank, commit_published
-from helpers.formatter_v2 import format_caption
+from helpers.formatter import format_caption
 from helpers.redis_store import metrics_add, metrics_top
 
 TZ = ZoneInfo(TIMEZONE)
@@ -141,3 +141,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
