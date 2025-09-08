@@ -186,9 +186,12 @@ def format_caption(p, amazon_tag):
     features_section = []
     features = p.get("features") or []
     if features and src == "amazon":
-        # Prendi solo le prime 3 features più significative
-        top_features = features[:3]
+        # Prendi solo le prime 2 features più importanti per risparmiare spazio
+        top_features = features[:2]
         for feat in top_features:
+            # Accorcia le features troppo lunghe
+            if len(feat) > 80:
+                feat = feat[:77] + "..."
             features_section.append(f"• {feat}")
     
     # === HASHTAGS ===
