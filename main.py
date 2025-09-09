@@ -1,46 +1,4 @@
-import os, asyncio, argparse
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from telethon import TelegramClient, Button
-from config import (API_ID, API_HASH, BOT_TOKEN, CHANNEL_MAIN, CHANNEL_ALI,
-                    TIMEZONE, AMAZON_PARTNER_TAG, PUBLISH_HOURS, POSTS_PER_SLOT,
-                    AMZ_TO_MAIN, AMZ_TO_ALI, ALI_TO_MAIN, ALI_TO_ALI)
-from helpers.selector import gather_candidates, enrich_and_rank, commit_published
-from helpers.formatter import format_caption
-from helpers.redis_store import metrics_add, metrics_top
-
-TZ = ZoneInfo(TIMEZONE)
-client = TelegramClient("bot", API_ID, API_HASH)
-client.parse_mode = 'html'
-
-def decide_action(now_local: datetime):
-    if now_local.weekday() == 6 and now_local.hour == 12:
-        return "weekly-report"
-    if now_local.weekday() < 5 and now_local.hour in PUBLISH_HOURS:
-        return "publish"
-    return None
-
-def week_key(dt: datetime) -> str:
-    year, week, _ = dt.isocalendar()
-    return f"{year}-W{week:02d}"
-
-def create_inline_buttons(offer_url, offer_source="amazon"):
-    """Crea i pulsanti inline per ogni post"""
-    buttons = []
-    
-    # Pulsante principale Amazon/AliExpress
-    if offer_source == "amazon":
-        buttons.append([Button.url("🛒 Vedi su Amazon", offer_url)])
-    else:
-        buttons.append([Button.url("🛒 Vedi su AliExpress", offer_url)])
-    
-    # Pulsanti di servizio (affiancati)
-    buttons.append([
-        Button.url("⚠️ Segnala errori", "https://t.me/BrislyDealsBot"),
-        Button.url("🌐 BrislyDeals", "https://brislydeals.com")
-    ])
-    
-    return buttons
+import urllib.parse
 
 async def task_publish():
     cands = await asyncio.to_thread(gather_candidates)
@@ -65,80 +23,82 @@ async def task_publish():
 
         # Prepara URL con tag affiliazione
         url = offer.get('url', '')
-        if offer.get("source") == "amazon" and url and "tag=" not in url:
-            sep = '&' if '?' in url else '?'
-            url = f"{url}{sep}tag={AMAZON_PARTNER_TAG}"
+        
+        # VALIDAZIONE E FIX URL
+        if not url:
+            print(f"[ERROR] URL mancante per {offer.get('asin', 'unknown')}, skipping...")
+            continue
+            
+        # Assicurati che l'URL inizi con http/https
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+            
+        # Pulisci l'URL da caratteri problematici
+        try:
+            # Parse e ricostruisci l'URL per pulirlo
+            parsed = urllib.parse.urlparse(url)
+            
+            # Se manca il dominio, skip
+            if not parsed.netloc:
+                print(f"[ERROR] URL invalido {url} per {offer.get('asin', 'unknown')}, skipping...")
+                continue
+                
+            # Ricostruisci URL pulito
+            clean_url = urllib.parse.urlunparse(parsed)
+            
+            # Limita lunghezza URL (Telegram max 2048)
+            if len(clean_url) > 2000:
+                print(f"[WARNING] URL troppo lungo per {offer.get('asin', 'unknown')}, troncato")
+                clean_url = clean_url[:2000]
+                
+        except Exception as e:
+            print(f"[ERROR] Impossibile parsare URL {url}: {e}, skipping...")
+            continue
+        
+        # Aggiungi tag affiliazione se Amazon
+        if offer.get("source") == "amazon" and "tag=" not in clean_url:
+            sep = '&' if '?' in clean_url else '?'
+            clean_url = f"{clean_url}{sep}tag={AMAZON_PARTNER_TAG}"
+        
+        # Log dell'URL finale per debug
+        print(f"[DEBUG] URL finale per {offer.get('asin', 'unknown')}: {clean_url[:100]}...")
 
         for ch in targets:
             # Formatta caption (senza link testuale)
             caption = format_caption(offer, AMAZON_PARTNER_TAG)
             
-            # Crea pulsanti inline
-            buttons = create_inline_buttons(url, offer.get("source", "amazon"))
+            # Crea pulsanti inline con URL validato
+            buttons = create_inline_buttons(clean_url, offer.get("source", "amazon"))
             
-            # Pubblica con immagine e pulsanti
-            if offer.get("image"):
-                await client.send_file(
-                    ch, 
-                    offer["image"], 
-                    caption=caption, 
-                    parse_mode="html",
-                    buttons=buttons
-                )
-            else:
-                await client.send_message(
-                    ch, 
-                    caption, 
-                    parse_mode="html",
-                    buttons=buttons
-                )
-            
-            # metriche per report (per canale)
-            ocopy = dict(offer); ocopy["channel"] = ch
-            metrics_add(wk, ocopy, float(offer.get("score", 0)))
-            print(f"Pubblicata ({offer.get('source','?')}) su {ch}: {offer['title']}")
+            try:
+                # Pubblica con immagine e pulsanti
+                if offer.get("image"):
+                    await client.send_file(
+                        ch, 
+                        offer["image"], 
+                        caption=caption, 
+                        parse_mode="html",
+                        buttons=buttons
+                    )
+                else:
+                    await client.send_message(
+                        ch, 
+                        caption, 
+                        parse_mode="html",
+                        buttons=buttons
+                    )
+                
+                # metriche per report (per canale)
+                ocopy = dict(offer); ocopy["channel"] = ch
+                metrics_add(wk, ocopy, float(offer.get("score", 0)))
+                print(f"✅ Pubblicata ({offer.get('source','?')}) su {ch}: {offer['title']}")
+                
+            except Exception as e:
+                print(f"[ERROR] Impossibile pubblicare su {ch}: {e}")
+                print(f"[DEBUG] URL che ha causato l'errore: {clean_url}")
+                # Continua con il prossimo canale/prodotto invece di crashare
+                continue
 
         commit_published(offer["asin"])
 
     await client.disconnect()
-
-async def task_weekly_report():
-    wk = week_key(datetime.now(TZ))
-    top_score = metrics_top(wk, "score", topn=5)
-    top_disc  = metrics_top(wk, "discount", topn=5)
-
-    def fmt(items):
-        lines = []
-        for i, it in enumerate(items, 1):
-            lines.append(f"{i}) {it['title']} — ⭐{it.get('score',0)}/5 — 💸 {it.get('discount_pct',0)}%")
-        return "\n".join(lines) if lines else "Nessun dato disponibile questa settimana."
-
-    text = (
-        "<b>📊 Report settimanale BrislyDeals</b>\n\n"
-        "<b>🏅 Top 5 per Punteggio</b>\n" + fmt(top_score) + "\n\n" +
-        "<b>💥 Top 5 per Risparmio</b>\n" + fmt(top_disc) + "\n\n"
-        "Grazie per averci seguito! ❤️"
-    )
-    await client.start(bot_token=BOT_TOKEN)
-    await client.send_message(CHANNEL_MAIN, text, parse_mode="html")
-    await client.disconnect()
-
-async def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("action", nargs="?", help="publish | weekly-report")
-    args = parser.parse_args()
-
-    now = datetime.now(TZ)
-    action = args.action or decide_action(now)
-    if not action:
-        print(f"No-op ({now.isoformat()} {TIMEZONE})")
-        return
-
-    if action == "publish":
-        await task_publish()
-    elif action == "weekly-report":
-        await task_weekly_report()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
